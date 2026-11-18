@@ -1,0 +1,38 @@
+# roles/periphery/tasks/install_periphery.yml
+---
+- name: Check if Periphery service exists
+  become: true
+  ansible.builtin.systemd:
+    name: "{{ komodo_periphery_service }}"
+  register: periphery_service
+  failed_when: false
+  changed_when: false
+
+- name: Install Periphery for Komodo
+  become: true
+  when: periphery_service.status.LoadState == "not-found"
+  no_log: true
+  block:
+    - name: Download the Periphery setup script
+      ansible.builtin.get_url:
+        url: https://raw.githubusercontent.com/moghtech/komodo/main/scripts/setup-periphery.py
+        dest: /tmp/setup-periphery.py
+        mode: '0755'
+
+    - name: Run the Periphery setup script
+      ansible.builtin.command:
+        argv:
+          - python3
+          - /tmp/setup-periphery.py
+          - "--core-address={{ komodo_core_address }}"
+          - "--connect-as={{ inventory_hostname }}"
+          - "--onboarding-key={{ komodo_onboarding_key }}"
+      changed_when: true
+      no_log: true
+
+- name: Enable and start Periphery
+  become: true
+  ansible.builtin.systemd:
+    name: "{{ komodo_periphery_service }}"
+    enabled: true
+    state: started

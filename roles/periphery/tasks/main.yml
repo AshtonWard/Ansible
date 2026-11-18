@@ -1,0 +1,6 @@
+# roles/periphery/tasks/main.yml
+---
+# tasks file for periphery
+- name: Install Komodo Periphery as Service
+  ansible.builtin.include_tasks:
+    file: install_periphery.yml

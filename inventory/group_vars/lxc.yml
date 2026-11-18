@@ -1,0 +1,4 @@
+# inventory/group_vars/lxc.yml
+
+ansible_user: root
+ansible_connection: ssh

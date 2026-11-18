@@ -1,0 +1,73 @@
+# .github/workflows/create-new-group.yml
+name: Create New Ansible Group
+
+on:
+  workflow_dispatch:
+    inputs:
+      group_name:
+        description: "Ansible group name"
+        required: true
+        type: string
+
+jobs:
+  create-group:
+    if: vars.ENABLE_LAB_AUTOMATION == 'true'
+    runs-on: self-hosted
+
+    env:
+      ANSIBLE_REPO_DIR: ${{ vars.ANSIBLE_REPO_DIR }}
+      GROUP_NAME: ${{ inputs.group_name }}
+
+    steps:
+      - name: Require an explicitly configured checkout
+        shell: bash
+        run: |
+          test -n "$ANSIBLE_REPO_DIR" && test -d "$ANSIBLE_REPO_DIR/.git" || {
+            echo "::error::Set ANSIBLE_REPO_DIR to the persistent example checkout."
+            exit 1
+          }
+      - name: Update Ansible repository
+        shell: bash
+        run: |
+          cd "$ANSIBLE_REPO_DIR"
+          git pull --ff-only
+
+      - name: Create Ansible group
+        working-directory: ${{ vars.ANSIBLE_REPO_DIR }}
+        shell: pwsh
+        run: |
+          .\scripts\New-AnsibleGroup.ps1 `
+            -GroupName "$env:GROUP_NAME"
+
+      - name: Show changes
+        working-directory: ${{ vars.ANSIBLE_REPO_DIR }}
+        shell: pwsh
+        run: |
+          git status
+          git diff
+
+      - name: Validate Ansible inventory
+        working-directory: ${{ vars.ANSIBLE_REPO_DIR }}
+        shell: bash
+        run: |
+          ansible-inventory \
+            -i inventory/hosts.yml \
+            --graph
+
+      - name: Commit changes
+        working-directory: ${{ vars.ANSIBLE_REPO_DIR }}
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add -- inventory/hosts.yml inventory/group_vars .github/workflows/create-new-vm.yml
+
+          git diff --cached --quiet || \
+            git commit -m "Add Ansible group: $GROUP_NAME"
+
+      - name: Push changes
+        working-directory: ${{ vars.ANSIBLE_REPO_DIR }}
+        shell: bash
+        run: |
+          git push

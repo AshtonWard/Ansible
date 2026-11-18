@@ -1,0 +1,12 @@
+# roles/node_exporter/tasks/update_targets.yml
+---
+- name: Update Prometheus configuration
+  ansible.builtin.template:
+    src: prometheus.yml.j2
+    dest: /etc/prometheus/prometheus.yml
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+    validate: /usr/bin/promtool check config %s
+  notify: Restart prometheus

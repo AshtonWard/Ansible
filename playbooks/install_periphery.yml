@@ -1,0 +1,8 @@
+# playbooks/install_periphery.yml
+---
+- name: Install Komodo Periphery
+  hosts: docker
+  become: true
+  roles:
+    - role: periphery
+      tags: periphery_install

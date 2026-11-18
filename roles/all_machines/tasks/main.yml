@@ -1,0 +1,4 @@
+---
+- name: Run base installation tasks
+  ansible.builtin.include_tasks:
+    file: base-install.yml

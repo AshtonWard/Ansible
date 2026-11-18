@@ -1,0 +1,8 @@
+# roles/komodo/defaults/main.yml
+
+# defaults/main.yml is primarily a place for default variables belonging to an Ansible role.
+---
+komodo_core_address: "http://komodo.lab.example.invalid:9120"
+
+komodo_periphery_service: "periphery"
+komodo_periphery_config: "/etc/komodo/periphery.config.toml"

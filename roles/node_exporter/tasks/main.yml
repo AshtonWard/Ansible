@@ -1,0 +1,21 @@
+# roles/node_exporter/tasks/main.yml
+---
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Install Node Exporter
+  ansible.builtin.apt:
+    name: prometheus-node-exporter
+    state: present
+
+- name: Ensure Node Exporter is running
+  ansible.builtin.service:
+    name: prometheus-node-exporter
+    enabled: true
+    state: started
+
+# apt update
+# apt install -y prometheus-node-exporter
+# systemctl is-active prometheus-node-exporter

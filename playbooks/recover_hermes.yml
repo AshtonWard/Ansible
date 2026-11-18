@@ -1,0 +1,74 @@
+# playbooks/recover_hermes.yml
+---
+- name: Recover Hermes
+  hosts: hermes
+  gather_facts: true
+  become: false
+  tasks:
+    - name: Check if Hermes Gateway is active
+      shell: |
+        systemctl --user is-active hermes-gateway.service
+      register: hermes_gateway_active
+      ignore_errors: true
+      changed_when: false
+
+    - name: Check if Hermes Dashboard is active
+      shell: |
+        systemctl --user is-active hermes-dashboard.service
+      register: hermes_dashboard_active
+      ignore_errors: true
+      changed_when: false
+
+    - name: Is Hermes Dashboard reachable?
+      shell: |
+        curl -s -o /dev/null -m 10 -w "%{http_code}" {{ hermes_dashboard_url | quote }}
+      register: hermes_dashboard_uri
+      ignore_errors: true
+      changed_when: false
+
+    - name: Restart Hermes dashboard or gateway if not running.
+      when: hermes_dashboard_uri.stdout not in ['200', '302'] or hermes_gateway_active.rc != 0 or hermes_dashboard_active.rc != 0
+      block:
+        - name: If Hermes Gateway is not active, restart the service
+          when: hermes_gateway_active.rc != 0
+          block:
+            - name: Restart Hermes Gateway service
+              shell: |
+                systemctl --user restart hermes-gateway.service
+              ignore_errors: false
+            # Wait for the Hermes Gateway service to be active
+            - name: Wait for Hermes Gateway to be active
+              shell: |
+                systemctl --user is-active hermes-gateway.service
+              register: hermes_gateway_active_check
+              until: hermes_gateway_active_check.rc == 0
+              retries: 5
+              delay: 30
+              ignore_errors: false
+              changed_when: false
+        - name: If Hermes Dashboard is not active or reachable, restart the service
+          when: hermes_dashboard_uri.stdout not in ['200', '302'] or hermes_dashboard_active.rc != 0
+          block:
+            - name: Restart Hermes Dashboard service
+              shell: |
+                systemctl --user restart hermes-dashboard.service
+              ignore_errors: false
+            # Wait for the Hermes Dashboard service to be active and reachable
+            - name: Wait for Hermes Dashboard to be active
+              shell: |
+                systemctl --user is-active hermes-dashboard.service
+              register: hermes_dashboard_active_check
+              until: hermes_dashboard_active_check.rc == 0
+              retries: 5
+              delay: 30
+              ignore_errors: false
+              changed_when: false
+            - name: Wait for Hermes Dashboard to be reachable
+              shell: |
+                curl -s -o /dev/null -m 10 -w "%{http_code}" {{ hermes_dashboard_url | quote }}
+              register: hermes_dashboard_uri_check
+              until: hermes_dashboard_uri_check.stdout in ['200', '302']
+              retries: 10
+              delay: 15
+              ignore_errors: false
+              changed_when: false

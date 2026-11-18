@@ -1,0 +1,59 @@
+# .github/workflows/docker-playbook.yml
+name: Install Docker
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "VM to install Docker on"
+        required: true
+        type: string
+
+jobs:
+  install-docker:
+    if: vars.ENABLE_LAB_AUTOMATION == 'true'
+    runs-on: [self-hosted, linux]
+
+    env:
+      ANSIBLE_REPO_DIR: ${{ vars.ANSIBLE_REPO_DIR }}
+      TARGET: ${{ inputs.target }}
+
+    steps:
+      - name: Require an explicitly configured checkout
+        shell: bash
+        run: |
+          test -n "$ANSIBLE_REPO_DIR" && test -d "$ANSIBLE_REPO_DIR/.git" || {
+            echo "::error::Set ANSIBLE_REPO_DIR to the persistent example checkout."
+            exit 1
+          }
+      - name: Update Ansible repository
+        shell: bash
+        run: |
+          cd "$ANSIBLE_REPO_DIR"
+          git pull --ff-only
+
+      - name: Create Ansible Vault password
+        shell: bash
+        env:
+          VAULT_PASSWORD: ${{ secrets.ANSIBLE_VAULT_PASSWORD }}
+        run: |
+          umask 077
+          printf '%s' "$VAULT_PASSWORD" > "$RUNNER_TEMP/vault-pass"
+
+      - name: Verify target inventory
+        working-directory: ${{ vars.ANSIBLE_REPO_DIR }}
+        run: |
+          ansible-inventory --host "$TARGET" --vault-password-file "$RUNNER_TEMP/vault-pass"
+
+      - name: Install Docker
+        working-directory: ${{ vars.ANSIBLE_REPO_DIR }}
+        shell: bash
+        run: |
+          ansible-playbook playbooks/docker.yml \
+            --limit "$TARGET" \
+            --vault-password-file "$RUNNER_TEMP/vault-pass"
+
+      - name: Remove Vault password
+        if: always()
+        run: |
+          rm -f "$RUNNER_TEMP/vault-pass"

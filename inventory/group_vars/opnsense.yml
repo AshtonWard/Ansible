@@ -1,0 +1,4 @@
+# inventory/group_vars/opnsense.yml
+ansible_user: root
+ansible_connection: ssh
+ansible_python_interpreter: none

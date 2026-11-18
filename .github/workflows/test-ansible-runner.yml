@@ -1,0 +1,21 @@
+name: Test Ansible Runner
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    if: vars.ENABLE_LAB_AUTOMATION == 'true'
+    runs-on: [self-hosted, linux]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          token: ${{ secrets.ANSIBLE_REPO_PERMISSIONS_PAT }}
+
+      - name: Check Ansible
+        run: ansible --version
+
+      - name: Check inventory
+        run: ansible-inventory --graph

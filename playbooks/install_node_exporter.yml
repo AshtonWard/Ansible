@@ -1,0 +1,16 @@
+# playbooks/install_node_exporter.yml
+---
+- name: Install Node Exporter
+  hosts: linux_hosts
+  become: true
+  roles:
+    - node_exporter
+
+- name: Configure Prometheus scrape targets
+  hosts: prometheus
+  become: true
+  tasks:
+    - name: Update Prometheus targets
+      ansible.builtin.include_role:
+        name: node_exporter
+        tasks_from: update_targets

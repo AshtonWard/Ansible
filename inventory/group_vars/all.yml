@@ -1,0 +1,4 @@
+---
+# Public example configuration only. Replace reserved example endpoints locally.
+hermes_dashboard_url: "https://hermes.example.invalid"
+wazuh_manager_address: "wazuh.example.invalid"

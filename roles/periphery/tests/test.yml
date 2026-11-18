@@ -1,0 +1,6 @@
+# roles/periphery/tests/test.yml
+---
+- hosts: localhost
+  remote_user: root
+  roles:
+    - periphery
