@@ -1,0 +1,32 @@
+# roles/wazuh_agent/tasks/wazuh-agent-install.yml
+---
+- name: Install Wazuh Agent
+  block:
+    - name: Download Wazuh agent package
+      ansible.builtin.get_url:
+        url: "https://packages.wazuh.com/4.x/apt/pool/main/w/wazuh-agent/wazuh-agent_{{ wazuh_version }}_amd64.deb"
+        dest: "/tmp/wazuh-agent_{{ wazuh_version }}_amd64.deb"
+        mode: '0644'
+
+    - name: Install Wazuh agent
+      ansible.builtin.apt:
+        deb: "/tmp/wazuh-agent_{{ wazuh_version }}_amd64.deb"
+      environment:
+        WAZUH_MANAGER: "{{ wazuh_manager }}"
+        WAZUH_AGENT_GROUP: "{{ wazuh_group }}"
+
+    - name: Enable Wazuh agent
+      ansible.builtin.systemd:
+        name: wazuh-agent
+        enabled: yes
+
+    - name: Start Wazuh agent
+      ansible.builtin.systemd:
+        name: wazuh-agent
+        state: started
+  become: true
+
+  vars:
+    wazuh_manager: "{{ wazuh_manager_address }}"
+    wazuh_group: "default"
+    wazuh_version: "4.14.6-1"

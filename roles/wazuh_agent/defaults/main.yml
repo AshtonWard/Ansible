@@ -1,0 +1,3 @@
+# roles/wazuh_agent/defaults/main.yml
+---
+# defaults/main.yml is primarily a place for default variables belonging to an Ansible role.

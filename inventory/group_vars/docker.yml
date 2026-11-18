@@ -1,0 +1,4 @@
+# inventory/group_vars/docker.yml
+
+ansible_user: user
+ansible_connection: ssh

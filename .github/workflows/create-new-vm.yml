@@ -1,0 +1,223 @@
+# .github/workflows/create-new-vm.yml
+name: Deploy Machine
+
+on:
+  workflow_dispatch:
+    inputs:
+      vm_name:
+        description: "VM name"
+        required: true
+        type: string
+
+      group:
+        description: "Ansible inventory group"
+        required: true
+        type: choice
+        options:
+          - docker
+          - test
+          - linux
+          - proxmox
+          - lxc
+          - opnsense
+          - cisco_switches
+          - ai
+          - komodo_core
+
+      template_id:
+        description: "Proxmox template VM ID"
+        required: true
+        type: string
+        default: "99999"
+
+      vlan:
+        description: "VLAN ID for the VM"
+        required: true
+        type: string
+        default: "30"
+
+      last_octet:
+        description: "Last octet of the VM's IP address"
+        required: true
+        type: string
+
+
+jobs:
+  deploy:
+    if: vars.ENABLE_LAB_AUTOMATION == 'true'
+    runs-on: [self-hosted, linux]
+
+    env:
+      ANSIBLE_REPO_DIR: ${{ vars.ANSIBLE_REPO_DIR }}
+      LAB_IPV4_PREFIX: ${{ vars.LAB_IPV4_PREFIX }}
+      VLAN: ${{ inputs.vlan }}
+      LAST_OCTET: ${{ inputs.last_octet }}
+      TEMPLATE_ID: ${{ inputs.template_id }}
+      VM_NAME: ${{ inputs.vm_name }}
+      IP_ADDRESS: "${{ vars.LAB_IPV4_PREFIX }}.${{ inputs.vlan }}.${{ inputs.last_octet }}"
+      GATEWAY: "${{ vars.LAB_IPV4_PREFIX }}.${{ inputs.vlan }}.1"
+      INVENTORY_GROUP: ${{ inputs.group }}
+
+    steps:
+      - name: Require an explicitly configured checkout
+        shell: bash
+        run: |
+          test -n "$ANSIBLE_REPO_DIR" && test -d "$ANSIBLE_REPO_DIR/.git" || {
+            echo "::error::Set ANSIBLE_REPO_DIR to the persistent example checkout."
+            exit 1
+          }
+      - name: Validate Inputs
+        shell: bash
+        run: |
+          if [[ ! "$VLAN" =~ ^[1-9][0-9]{1,2}$ ]]; then
+            echo "::error::VLAN must be a number without leading zeros."
+            exit 1
+          fi
+
+          if (( VLAN < 10 || VLAN > 254 )); then
+            echo "::error::VLAN must be between 10 and 254 for this addressing scheme."
+            exit 1
+          fi
+
+          if [[ ! "$LAST_OCTET" =~ ^[1-9][0-9]{1,2}$ ]]; then
+            echo "::error::Last octet must be a number without leading zeros."
+            exit 1
+          fi
+
+          if (( LAST_OCTET < 11 || LAST_OCTET > 254 )); then
+            echo "::error::Last octet must be between 11 and 254."
+            exit 1
+          fi
+
+          if [[ ! "$TEMPLATE_ID" =~ ^[1-9][0-9]{2,8}$ ]]; then
+            echo "::error::Template ID must be between 100 and 999999999."
+            exit 1
+          fi
+
+          if [[ ! "$VM_NAME" =~ ^[a-z]([a-z0-9-]{0,61}[a-z0-9])?$ ]]; then
+            echo "::error::VM name must be 1–63 lowercase letters, digits, or hyphens; start with a letter and end with a letter or digit."
+            exit 1
+          fi
+
+          if [[ ! "$INVENTORY_GROUP" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+            echo "::error::Invalid inventory group name."
+            exit 1
+          fi
+
+          python3 - "$LAB_IPV4_PREFIX" <<'PYCODE'
+          import ipaddress, sys
+          prefix = sys.argv[1]
+          try:
+              address = ipaddress.IPv4Address(prefix + '.0.0')
+              assert len(prefix.split('.')) == 2
+          except (ValueError, AssertionError):
+              raise SystemExit('LAB_IPV4_PREFIX must contain exactly two IPv4 octets')
+          PYCODE
+
+          printf -v VM_ID '%d%03d' "$VLAN" "$LAST_OCTET"
+
+          if [[ "$VM_ID" == "$TEMPLATE_ID" ]]; then
+            echo "::error::VM ID must differ from template ID."
+            exit 1
+          fi
+
+          echo "VM_ID=$VM_ID" >> "$GITHUB_ENV"
+
+      - name: Update Ansible repository
+        shell: bash
+        run: |
+          cd "$ANSIBLE_REPO_DIR"
+          git pull --ff-only
+
+      - name: Create Ansible Vault password file
+        shell: bash
+        env:
+          VAULT_PASSWORD: ${{ secrets.ANSIBLE_VAULT_PASSWORD }}
+        run: |
+          umask 077
+          printf '%s' "$VAULT_PASSWORD" > "$RUNNER_TEMP/vault-pass"
+
+      - name: Verify requested inventory group
+        working-directory: ${{ vars.ANSIBLE_REPO_DIR }}
+        shell: bash
+        run: |
+          ansible-inventory --list --vault-password-file "$RUNNER_TEMP/vault-pass" | python3 -c 'import json,sys; data=json.load(sys.stdin); sys.exit(0 if sys.argv[1] in data else "Inventory group does not exist")' "$INVENTORY_GROUP"
+
+      - name: Clone and configure VM
+        working-directory: ${{ vars.ANSIBLE_REPO_DIR }}
+        shell: bash
+        run: |
+          ansible pve \
+            -m shell \
+            -a "qm clone $TEMPLATE_ID $VM_ID --name $VM_NAME && \
+                qm set $VM_ID --net0 virtio,bridge=vmbr1,firewall=1,tag=$VLAN && \
+                qm set $VM_ID --ipconfig0 ip=$IP_ADDRESS/24,gw=$GATEWAY && \
+                qm start $VM_ID" \
+            --vault-password-file "$RUNNER_TEMP/vault-pass"
+
+      - name: Update inventory
+        working-directory: ${{ vars.ANSIBLE_REPO_DIR }}
+        shell: bash
+        run: |
+          pwsh ./scripts/Update-Inventory.ps1 \
+            -VmName "$VM_NAME" \
+            -IpAddress "$IP_ADDRESS" \
+            -Group "$INVENTORY_GROUP"
+
+      - name: Show inventory changes
+        working-directory: ${{ vars.ANSIBLE_REPO_DIR }}
+        shell: bash
+        run: |
+          git status
+          git diff
+
+      - name: Validate Ansible inventory
+        working-directory: ${{ vars.ANSIBLE_REPO_DIR }}
+        shell: bash
+        run: |
+          ansible-inventory \
+            -i inventory/hosts.yml \
+            --graph
+
+      - name: Commit inventory changes
+        working-directory: ${{ vars.ANSIBLE_REPO_DIR }}
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add -- inventory/hosts.yml "inventory/host_vars/$VM_NAME.yml"
+
+          git diff --cached --quiet || \
+            git commit -m "Add VM: $VM_NAME"
+
+      - name: Push inventory changes
+        working-directory: ${{ vars.ANSIBLE_REPO_DIR }}
+        shell: bash
+        run: |
+          git push
+
+      - name: Verify inventory
+        working-directory: ${{ vars.ANSIBLE_REPO_DIR }}
+        run: |
+          ansible-inventory --graph
+
+      - name: Wait for VM to become reachable
+        working-directory: ${{ vars.ANSIBLE_REPO_DIR }}
+        run: |
+          ansible "$VM_NAME" \
+            -m ansible.builtin.wait_for_connection \
+            -a "timeout=300" \
+            --vault-password-file "$RUNNER_TEMP/vault-pass"
+
+      - name: Bootstrap VM
+        working-directory: ${{ vars.ANSIBLE_REPO_DIR }}
+        run: |
+          ansible-playbook playbooks/bootstrap.yml \
+            --limit "$VM_NAME" \
+            --vault-password-file "$RUNNER_TEMP/vault-pass"
+
+      - name: Remove Vault password
+        if: always()
+        run: |
+          rm -f "$RUNNER_TEMP/vault-pass"

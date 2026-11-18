@@ -1,0 +1,7 @@
+# playbooks/komodo.yml
+---
+- name: Deploy Komodo Core
+  hosts: komodo_core
+  become: true
+  roles:
+    - komodo_core

@@ -1,0 +1,4 @@
+# inventory/group_vars/test.yml
+
+ansible_user: user
+ansible_connection: ssh

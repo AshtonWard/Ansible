@@ -1,0 +1,11 @@
+# playbooks/docker.yml
+---
+- name: Install Docker and Komodo Periphery
+  hosts: docker
+  become: true
+  roles:
+    - role: docker
+      tags: docker_install
+
+    - role: periphery
+      tags: periphery_install

@@ -1,0 +1,5 @@
+# roles/wazuh_agent/tasks/main.yml
+---
+- name: Run Wazuh agent installation tasks
+  ansible.builtin.include_tasks:
+    file: wazuh-agent-install.yml

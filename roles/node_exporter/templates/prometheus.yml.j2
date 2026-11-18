@@ -1,0 +1,28 @@
+# Managed by Ansible
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+rule_files: []
+
+scrape_configs:
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+        labels:
+          app: "prometheus"
+    scrape_native_histograms: true
+
+  - job_name: "node_exporter"
+    static_configs:
+{% for host in groups['linux_hosts'] | sort %}
+      - targets:
+          - "{{ hostvars[host]['ansible_host'] | default(host) }}:9100"
+        labels:
+          hostname: "{{ host }}"
+{% endfor %}

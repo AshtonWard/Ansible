@@ -1,0 +1,3 @@
+# roles/komodo_core/tasks/main.yml
+---
+# Leave this empty as we do not need an aditional Komodo Core.

@@ -1,0 +1,11 @@
+# playbooks/restart_wazuh_agents.yml
+---
+- name:  Restart Wazuh Agents
+  hosts: "linux_hosts:!wazuh"
+  gather_facts: false
+  become: true
+  tasks:
+    - name: Restart Wazuh Agent Service
+      ansible.builtin.service:
+        name: wazuh-agent
+        state: restarted

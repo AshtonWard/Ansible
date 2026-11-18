@@ -1,0 +1,7 @@
+# playbooks/install_wazuh_agent.yml
+---
+- name: Install Wazuh Agent
+  hosts: "linux_hosts:!wazuh"
+  become: true
+  roles:
+    - wazuh_agent

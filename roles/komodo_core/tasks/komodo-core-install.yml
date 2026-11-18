@@ -1,0 +1,81 @@
+# roles/komodo/tasks/komodo-core-install.yml
+---
+- name: Create Komodo directory
+  become: true
+  ansible.builtin.file:
+    path: /opt/komodo
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Create Komodo backup directory
+  become: true
+  ansible.builtin.file:
+    path: /etc/komodo/backups
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Download official Komodo MongoDB Compose file
+  become: true
+  ansible.builtin.get_url:
+    url: https://raw.githubusercontent.com/moghtech/komodo/main/compose/mongo.compose.yaml
+    dest: /opt/komodo/mongo.compose.yaml
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Download official Komodo environment file
+  become: true
+  ansible.builtin.get_url:
+    url: https://raw.githubusercontent.com/moghtech/komodo/main/compose/compose.env
+    dest: /opt/komodo/compose.env
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Configure Komodo environment
+  no_log: true
+  become: true
+  ansible.builtin.lineinfile:
+    path: /opt/komodo/compose.env
+    regexp: "^{{ item.key }}="
+    line: "{{ item.key }}={{ item.value }}"
+  loop:
+    - key: COMPOSE_KOMODO_IMAGE_TAG
+      value: "2"
+    - key: COMPOSE_KOMODO_BACKUPS_PATH
+      value: "/etc/komodo/backups"
+    - key: KOMODO_DATABASE_USERNAME
+      value: "komodo"
+    - key: KOMODO_DATABASE_PASSWORD
+      value: "{{ komodo_database_password }}"
+    - key: TZ
+      value: "America/Chicago"
+    - key: KOMODO_TITLE
+      value: "Komodo"
+
+- name: Start Komodo
+  become: true
+  ansible.builtin.command:
+    cmd: docker compose -p komodo -f mongo.compose.yaml --env-file compose.env up -d
+    chdir: /opt/komodo
+  register: komodo_compose
+  changed_when: >
+    'Started' in komodo_compose.stdout or
+    'Created' in komodo_compose.stdout or
+    'Recreated' in komodo_compose.stdout
+
+- name: Show Komodo container status
+  become: true
+  ansible.builtin.command:
+    cmd: docker compose -p komodo -f mongo.compose.yaml ps
+    chdir: /opt/komodo
+  register: komodo_status
+  changed_when: false
+
+- name: Display Komodo status
+  ansible.builtin.debug:
+    var: komodo_status.stdout_lines
