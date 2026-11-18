@@ -61,11 +61,11 @@ Provisioning derives the subnet's third octet from the VLAN, uses a `/24` mask, 
 - The role-local `roles/periphery/tests/test.yml` is an installation example, not an isolated unit test. Do not execute it as part of publication checks.
 - Validation here does not prove VM creation, package installation, live reachability, or recovery against infrastructure.
 
-## Review and manual publication
+## Local validation
 
-Only copy the **contents of this directory** into the public repository after reviewing the diff. Do not copy the operational repository, its history, private inventory, vaults, runtime files, or this directory's parent. No public transfer is performed by these checks.
+Keep real inventory, credentials, vaults, and runtime files out of this public reference. Review changes before publishing them.
 
-Run from this directory:
+Run from the repository root:
 
 ```sh
 python tools/check_sanitized.py
@@ -75,5 +75,3 @@ pwsh -NoProfile -File tests/inventory_scripts.ps1
 ```
 
 The PowerShell tests mutate a temporary example checkout only. `tools/check_sanitized.py` checks publication patterns, allowed example IPv4 addresses, YAML, workflow opt-in, and Bash syntax. These are guardrails, not a guarantee that all sensitive content will be recognized. Review new text and artifacts manually.
-
-`SOURCE_REVIEW.json` records hashes of reviewed implementation files. Inside private staging, run `python tools/check_source_parity.py --source-root ..` to detect implementation drift. The private repository's validation workflow runs this check when relevant source changes. The manifest intentionally excludes operational inventory contents; those must continue to be rebuilt as fictional examples and reviewed manually. See [SANITIZATION_REVIEW.md](SANITIZATION_REVIEW.md) for deliberate differences from source.
