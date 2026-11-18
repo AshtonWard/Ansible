@@ -1,71 +1,90 @@
-# Ansible homelab automation — sanitized reference
+# Ansible homelab automation
 
-This directory is a publication candidate built from the operational Ansible project reviewed on **November 17, 2026**. It includes the current playbooks, roles, nested inventory structure, provisioning workflows, and inventory scripts. Inventory entries use fictional aliases and RFC 5737 documentation addresses; service URLs use reserved example domains. These are examples, not a live inventory.
+I use Ansible, PowerShell, and GitHub Actions to provision and configure Linux hosts in my Proxmox homelab. This repository contains the public examples: VM provisioning workflows, reusable roles, inventory-management scripts, monitoring setup, and service recovery.
 
-## What the project demonstrates
+The goal is to make routine infrastructure changes repeatable and reviewable. The work also gives me a place to test the parts that are easy to miss in a manual setup, including input validation, inventory consistency, and failure handling.
 
-| Entry point | Actual behavior |
+I keep operational inventory and credentials outside this repository. The inventory here uses fictional host aliases, documentation IP addresses, and reserved example domains.
+
+## Provisioning flow
+
+The VM workflow connects Proxmox provisioning to Ansible configuration:
+
+1. Validate the VM name, template ID, network inputs, and inventory group.
+2. Clone an existing Proxmox template and configure the guest network.
+3. Add the host to inventory and validate the resulting configuration.
+4. Commit the inventory change, wait for SSH, and run the bootstrap playbook.
+
+Ansible handles host configuration; the GitHub Actions workflow coordinates the provisioning stages. PowerShell scripts update the nested YAML inventory and host variables. They preserve existing host settings, reject invalid input, and keep the workflow's group menu synchronized with inventory changes.
+
+The workflow does not yet roll back a partially created VM when a later stage fails. Safe rollback and explicit failure-state reporting are priorities for further development.
+
+## Configuration and service management
+
+| Entry point | Purpose |
 | --- | --- |
-| `playbooks/bootstrap.yml` | Base packages and PowerShell installation on `linux_hosts` |
-| `playbooks/docker.yml` | Docker **and** Komodo Periphery on the `docker` group |
-| `playbooks/install_periphery.yml` | Periphery installation separately from Docker |
-| `playbooks/install_wazuh_agent.yml` | Wazuh agent installation, excluding the Wazuh manager |
-| `playbooks/restart_wazuh_agents.yml` | Restart agents, excluding the manager |
-| `playbooks/install_node_exporter.yml` | Install Node Exporter, then render Prometheus scrape configuration |
-| `playbooks/recover_hermes.yml` | Check user services and HTTPS response; restart and retry when needed |
-| `playbooks/komodo.yml` | Targets `komodo_core`; its role entry point is currently empty |
-| `.github/workflows/create-new-vm.yml` | Clone a Proxmox template, configure networking, update inventory, wait for SSH, and bootstrap |
-| `.github/workflows/create-new-group.yml` | Create an inventory group and update the provisioning menu |
+| `playbooks/bootstrap.yml` | Install base packages and PowerShell on Linux hosts |
+| `playbooks/docker.yml` | Install Docker and Komodo Periphery |
+| `playbooks/install_periphery.yml` | Install Periphery independently of Docker |
+| `playbooks/install_wazuh_agent.yml` | Install Wazuh agents, excluding the manager |
+| `playbooks/restart_wazuh_agents.yml` | Restart agents without targeting the manager |
+| `playbooks/install_node_exporter.yml` | Install Node Exporter and update Prometheus scrape configuration |
+| `playbooks/recover_hermes.yml` | Check Hermes user services and dashboard responses, then restart and retry when needed |
+| `playbooks/komodo.yml` | Reserved entry point for unfinished Komodo Core deployment |
 
-`roles/docker` installs Docker; Periphery now has its own role. The playbook combines them explicitly. `roles/node_exporter` and `roles/wazuh_agent` reflect the newer monitoring and security automation.
+Docker and Periphery have separate roles so they can run independently or together. Host and group variables hold configuration values rather than embedding them in each playbook. The Node Exporter playbook separates exporter installation from the Prometheus configuration update.
 
-## Prerequisites and configuration
+## Repository layout
 
-Syntax checks were run with ansible-core 2.19.15. Operational use requires Python 3, Ansible, PowerShell 7 with `powershell-yaml` (tested with 0.4.12), SSH access, and appropriate sudo privileges. Network device tasks additionally require collections:
+```text
+.github/workflows/    Manual provisioning and playbook workflows
+inventory/            Fictional nested inventory, host vars, and group vars
+playbooks/            Configuration and recovery entry points
+roles/                Reusable host and service tasks
+scripts/              PowerShell inventory-management scripts
+tests/                Isolated inventory-script tests
+tools/                Public-content validation checks
+```
+
+## Configuration requirements
+
+The examples target Ubuntu-based hosts and assume an existing Proxmox template, a configured network bridge, trusted SSH host keys, and suitable administrative access. Package sources and architecture assumptions need review before use on another platform.
+
+Tooling used for validation:
+
+- ansible-core 2.19.15
+- PowerShell 7 with `powershell-yaml` 0.4.12
+- Python 3 with PyYAML for the content checker
+
+Collection requirements are listed in `collections/requirements.yml`:
 
 ```sh
 ansible-galaxy collection install -r collections/requirements.yml
 ```
 
-The examples retain Ubuntu package repositories and architecture assumptions from the source. Review them for the OS and architecture you actually use. Provisioning requires an existing Proxmox template and the expected bridge; these workflows do not create either.
+Service configuration uses variables such as `wazuh_manager_address`, `hermes_dashboard_url`, and `komodo_core_address`. Credentials are variable references, not checked-in values. Encrypted variables belong in a separate, untracked file supplied at runtime with `--extra-vars @/path/to/private-vault.yml` and an appropriate vault password source. SSH host key checking is enabled.
 
-Set addresses and accounts in your own private inventory. Supply secrets through a separately managed, **untracked** encrypted vars file, passed with `--extra-vars @/path/to/private-vault.yml` and a runtime vault password source. Never place real configuration in this publication folder. Configuration variables include:
+### GitHub Actions
 
-- `wazuh_manager_address`: manager endpoint.
-- `hermes_dashboard_url`: dashboard URL; HTTP 200 and 302 are considered healthy.
-- `komodo_core_address` and `komodo_onboarding_key`: Periphery registration endpoint and key.
-- `vault_cisco_password`: switch authentication secret referenced by the example group variables.
-- `komodo_database_password`: only relevant if you deliberately enable the dormant Core installer.
+All infrastructure workflows require manual dispatch and remain disabled unless `ENABLE_LAB_AUTOMATION` is set to `true`. They assume a deliberately configured private execution environment; a privileged lab runner should not accept untrusted jobs from a public repository.
 
-SSH host key checking is enabled in this copy. Establish trusted host keys before operational use.
-
-## Workflow configuration
-
-The infrastructure workflows are manual and **disabled by default** through a job condition. Do not attach a public repository's untrusted jobs to a privileged lab runner. For an intentionally configured private deployment, repository variables are:
-
-| Variable | Purpose |
+| Repository variable | Purpose |
 | --- | --- |
-| `ENABLE_LAB_AUTOMATION` | Must equal `true` to opt into infrastructure jobs |
-| `ANSIBLE_REPO_DIR` | Absolute path to a persistent clone containing this example at its root |
-| `LAB_IPV4_PREFIX` | Your network's first two IPv4 octets; no operational value is included |
+| `ENABLE_LAB_AUTOMATION` | Explicitly enable infrastructure jobs |
+| `ANSIBLE_REPO_DIR` | Persistent checkout used by the runner |
+| `LAB_IPV4_PREFIX` | Configurable IPv4 prefix for the provisioning example |
 
-Secrets referenced by the examples are `ANSIBLE_VAULT_PASSWORD` and, in the runner checkout example, `ANSIBLE_REPO_PERMISSIONS_PAT`. A vault password alone does not provide encrypted variables: arrange the private vars source separately before adapting these workflows. The persistent checkout needs authenticated pull/push access and the required tools installed.
+The workflows reference `ANSIBLE_VAULT_PASSWORD`; the runner checkout example also references `ANSIBLE_REPO_PERMISSIONS_PAT`. Neither credential is included. A vault password does not supply the encrypted variables themselves, so those require separate configuration.
 
-Provisioning derives the subnet's third octet from the VLAN, uses a `/24` mask, and restricts VLANs to 10–254 and host octets to 11–254. This is the source project's addressing convention, not the full supported VLAN range. The workflow menu is checked against the inventory. Scripts traverse nested groups, preserve existing host variables, reject malformed inputs, and synchronize new group options. YAML serialization can normalize formatting and comments.
+The provisioning example derives a subnet from the VLAN input and uses a `/24` mask. Its VLAN and host-octet restrictions are specific to that addressing model, not general networking limits.
 
-## Important implementation limits
+## Validation
 
-- **Komodo Core is unfinished/inactive:** `roles/komodo_core/tasks/main.yml` does not import the standalone installer; the Compose template is empty. Running `komodo.yml` does not deploy Core. These source limitations are preserved rather than presenting an implementation that does not exist.
-- **Prometheus configuration is replaced in full.** The template uses the `linux_hosts` inventory to construct Node Exporter targets, includes a local Prometheus job, and leaves rule and Alertmanager targets empty. The task backs up the previous file and validates with `promtool` before replacing it. Review existing jobs and rules before use.
-- Periphery and Core installer downloads follow upstream branches; they are not pinned to immutable revisions. Review upstream code before operational installation.
-- The role-local `roles/periphery/tests/test.yml` is an installation example, not an isolated unit test. Do not execute it as part of publication checks.
-- Validation here does not prove VM creation, package installation, live reachability, or recovery against infrastructure.
+The public examples passed the content checker, inventory parsing, and syntax checks for all eight playbooks. All four PowerShell scripts passed parsing, and the isolated inventory tests covered nested groups, preservation of host variables, repeated execution, invalid inputs, group creation, and workflow-menu synchronization.
 
-## Local validation
+These checks validate structure and selected script behavior. They do not establish that this public configuration has provisioned a VM, installed services, or recovered a live system.
 
-Keep real inventory, credentials, vaults, and runtime files out of this public reference. Review changes before publishing them.
-
-Run from the repository root:
+Run the checks from the repository root:
 
 ```sh
 python tools/check_sanitized.py
@@ -74,4 +93,15 @@ ansible-playbook --syntax-check playbooks/*.yml
 pwsh -NoProfile -File tests/inventory_scripts.ps1
 ```
 
-The PowerShell tests mutate a temporary example checkout only. `tools/check_sanitized.py` checks publication patterns, allowed example IPv4 addresses, YAML, workflow opt-in, and Bash syntax. These are guardrails, not a guarantee that all sensitive content will be recognized. Review new text and artifacts manually.
+The inventory tests modify a temporary example checkout. The content checker scans for credential patterns, non-example addresses, YAML errors, missing workflow opt-in, and invalid Bash syntax. It does not replace manual review. The role-local `roles/periphery/tests/test.yml` installs software and is not part of the isolated test suite.
+
+## Known limitations and next work
+
+- **Provisioning failure handling:** later-stage failures can leave a partially deployed VM. Rollback must distinguish a VM created by the current run from a pre-existing resource before attempting cleanup.
+- **Shared checkout concurrency:** workflows using the same persistent checkout are not serialized. Concurrent runs can race inventory edits and Git operations.
+- **Prometheus configuration ownership:** the role replaces the complete configuration, backs up the previous file, and validates the replacement with `promtool`. The example defines no alert rules or Alertmanager destinations. Existing jobs and rules need to be incorporated before using it against another configuration.
+- **Playbook limits:** the Prometheus update is a separate play. A `--limit` that excludes the Prometheus host also skips that update.
+- **Komodo Core:** the role entry point does not import the standalone installer, and its Compose template is empty. `komodo.yml` does not currently deploy Core.
+- **Installer dependencies:** Periphery and Core installer downloads follow upstream branches rather than immutable revisions. The Periphery example also uses an HTTP Core endpoint; transport security needs explicit configuration before operational use.
+
+The next work is deployment rollback, workflow concurrency controls, and completing the remaining service-deployment paths. I am keeping those gaps visible rather than presenting the repository as a finished provisioning platform.
